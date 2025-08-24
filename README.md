@@ -30,10 +30,10 @@ prox-foundryvtt/
 │   ├── outputs.tf          # Output definitions
 │   ├── providers.tf        # Provider configurations
 │   ├── foundryvtt.tf       # FoundryVTT VM resource
-│   ├── firblab.tfvars      # Environment-specific variables
+│   ├── firblab.tfvars.example  # Example variables file
 │   └── files/              # Static files for VM initialization
-│       ├── foundryvtt-user-data.yaml
-│       └── foundryvtt_ssh_key.pem
+│       ├── foundryvtt-user-data.yaml.example
+│       └── user-data.example
 └── ansible/                # Configuration Management
     ├── ansible.cfg         # Ansible configuration
     ├── inventory/          # Inventory files
@@ -62,6 +62,8 @@ cd prox-foundryvtt
 ```bash
 cd terraform
 cp firblab.tfvars.example firblab.tfvars
+cp files/user-data.example files/user-data
+cp files/foundryvtt-user-data.yaml.example files/foundryvtt-user-data.yaml
 ```
 
 Edit `firblab.tfvars` with your Proxmox details:
@@ -84,6 +86,8 @@ network_gateway         = "192.168.4.1"
 network_bridge          = "vmbr0"
 ```
 
+**Important**: Also edit the `files/user-data` and `files/foundryvtt-user-data.yaml` files to include your SSH public key and customize the user configuration.
+
 ### 3. Deploy Infrastructure
 
 ```bash
@@ -99,26 +103,27 @@ terraform apply -var-file="firblab.tfvars"
 
 ### 4. Configure Ansible Inventory
 
-After Terraform completes, update the Ansible inventory with the VM's IP:
+The Ansible inventory is already configured to dynamically get the VM IP from Terraform output. No manual editing required unless you want to customize the connection settings.
 
-```bash
-cd ../ansible
-```
-
-Edit `inventory/hosts.yml`:
+If you need to modify the inventory, edit `ansible/inventory/hosts.yml`:
 
 ```yaml
 all:
   children:
     foundryvtt:
       hosts:
-        foundryvtt-server:
-          ansible_host: 192.168.4.100  # Use the IP from Terraform output
+        foundryvtt-01:
+          ansible_host: "{{ lookup('pipe', 'cd ../../terraform && terraform output -raw foundryvtt_vm_ip') }}"
           ansible_user: foundry
-          ansible_ssh_private_key_file: ../terraform/files/foundryvtt_ssh_key.pem
+          ansible_ssh_private_key_file: "../terraform/files/foundryvtt_ssh_key.pem"
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 ```
 
 ### 5. Install FoundryVTT
+
+```bash
+cd ../ansible
+```
 
 #### Option A: Download FoundryVTT separately (Recommended)
 
@@ -270,11 +275,22 @@ sudo apt update && sudo apt upgrade -y
 
 ## Security Considerations
 
-- Change default SSH keys
-- Use strong passwords for FoundryVTT admin
-- Consider VPN access for remote play
-- Regular system updates
-- Firewall configuration review
+- **Never commit sensitive files**: The `.gitignore` is configured to exclude SSH keys, passwords, and configuration files with sensitive data
+- **Change default SSH keys**: Generate new SSH keys for production use
+- **Use strong passwords**: Set strong passwords for FoundryVTT admin and Proxmox access
+- **Consider VPN access**: For remote play, consider VPN access instead of exposing FoundryVTT directly to the internet
+- **Regular system updates**: Keep the VM and FoundryVTT updated
+- **Firewall configuration**: Review and customize UFW rules as needed
+- **File permissions**: Ensure proper file permissions on SSH keys (`chmod 600`)
+
+### Important Files to Keep Secure
+
+These files contain sensitive information and should never be committed to version control:
+- `terraform/firblab.tfvars` - Contains Proxmox credentials
+- `terraform/files/foundryvtt_ssh_key.pem` - SSH private key
+- `terraform/files/user-data` - Contains SSH public keys and user passwords
+- `terraform/files/foundryvtt-user-data.yaml` - Contains SSH keys and configuration
+- `terraform/terraform.tfstate*` - Contains infrastructure state and potentially sensitive data
 
 ## Contributing
 
@@ -286,11 +302,14 @@ sudo apt update && sudo apt upgrade -y
 
 ## License
 
-[Your License Here]
+This project is provided as-is for educational and personal use. Please ensure you have proper licenses for:
+- FoundryVTT software from [foundryvtt.com](https://foundryvtt.com/)
+- Any game systems, modules, or assets you use
 
 ## Support
 
 For issues and questions:
-- Check the troubleshooting section
-- Review FoundryVTT documentation
+- Check the troubleshooting section above
+- Review [FoundryVTT documentation](https://foundryvtt.com/kb/)
+- Check [Terraform Proxmox Provider documentation](https://registry.terraform.io/providers/Telmate/proxmox/latest/docs)
 - Open an issue on GitHub
