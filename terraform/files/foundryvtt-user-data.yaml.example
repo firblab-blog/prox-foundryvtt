@@ -1,0 +1,35 @@
+#cloud-config
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - default
+  - name: foundry
+    groups: [sudo]
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_key}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+  - name: YOUR_USERNAME
+    groups: [adm, sudo]
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - YOUR_SSH_PUBLIC_KEY_HERE
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+
+packages:
+  - curl
+  - wget
+  - unzip
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+package_update: true
+package_upgrade: true
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
