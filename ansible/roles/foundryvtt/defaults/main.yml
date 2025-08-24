@@ -1,0 +1,17 @@
+---
+# Node.js version
+nodejs_version: "22"
+
+# FoundryVTT configuration
+foundryvtt_install_dir: "/opt/foundryvtt"
+foundryvtt_data_dir: "/var/lib/foundryvtt"
+foundryvtt_config_dir: "/etc/foundryvtt"
+foundryvtt_port: "30000"
+foundryvtt_hostname: "0.0.0.0"
+foundryvtt_extra_args: ""
+
+# Set to true when FoundryVTT zip is present
+foundryvtt_zip_present: false
+
+# Optional: Path to local FoundryVTT zip file
+# foundryvtt_zip_path: "../files/foundryvtt.zip"

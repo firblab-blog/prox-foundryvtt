@@ -1,0 +1,11 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: restart foundryvtt
+  systemd:
+    name: foundryvtt
+    state: restarted
+  become: yes

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# FoundryVTT startup script
+cd {{ foundryvtt_install_dir }}
+
+# Check Node.js version
+NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
+if [ "$NODE_VERSION" -lt "18" ]; then
+    echo "Error: Node.js version 18 or higher required. Current version: $(node --version)"
+    exit 1
+fi
+
+# Start FoundryVTT using the correct path
+exec node resources/app/main.js \
+    --dataPath={{ foundryvtt_data_dir }} \
+    --port={{ foundryvtt_port }} \
+    --hostname={{ foundryvtt_hostname }} \
+    {{ foundryvtt_extra_args }}

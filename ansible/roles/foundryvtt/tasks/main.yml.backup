@@ -1,0 +1,166 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install required packages
+  apt:
+    name:
+      - libssl-dev
+      - curl
+      - unzip
+      - nginx
+      - ufw
+      - ca-certificates
+      - gnupg
+    state: present
+  become: yes
+
+- name: Create directory for NodeSource keyring
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Download and install NodeSource GPG key
+  shell: |
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  args:
+    creates: /etc/apt/keyrings/nodesource.gpg
+  become: yes
+
+- name: Add NodeSource repository with proper keyring
+  lineinfile:
+    path: /etc/apt/sources.list.d/nodesource.list
+    line: "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_{{ nodejs_version }}.x nodistro main"
+    create: yes
+    mode: '0644'
+  become: yes
+  register: nodesource_repo
+
+- name: Update apt cache after adding repository
+  apt:
+    update_cache: yes
+  become: yes
+  when: nodesource_repo.changed
+
+- name: Install Node.js from NodeSource
+  apt:
+    name: nodejs
+    state: present
+    update_cache: yes
+  become: yes
+
+- name: Verify Node.js version
+  command: node --version
+  register: node_version
+  changed_when: false
+
+- name: Display Node.js version
+  debug:
+    msg: "Node.js version installed: {{ node_version.stdout }}"
+
+- name: Verify Node.js version meets requirements
+  fail:
+    msg: "Node.js version {{ node_version.stdout }} is too old. Minimum required: v20.18"
+  when: 
+    - node_version.stdout is version('v20.18', '<')
+
+- name: Create FoundryVTT directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: foundry
+    group: foundry
+    mode: '0755'
+  loop:
+    - "{{ foundryvtt_install_dir }}"
+    - "{{ foundryvtt_data_dir }}"
+    - "{{ foundryvtt_config_dir }}"
+
+- name: Check if FoundryVTT is already installed
+  stat:
+    path: "{{ foundryvtt_install_dir }}/main.js"
+  register: foundryvtt_installed
+
+- name: Download FoundryVTT (placeholder - needs manual download)
+  debug:
+    msg: |
+      FoundryVTT must be manually downloaded from your account.
+      
+      Steps:
+      1. Download the Node.js version from https://foundryvtt.com/
+      2. Copy the zip file to {{ foundryvtt_install_dir }}/foundryvtt.zip
+      3. Run the playbook again with -e foundryvtt_zip_present=true
+  when: not foundryvtt_installed.stat.exists and not foundryvtt_zip_present | default(false)
+
+- name: Copy FoundryVTT zip from local files
+  copy:
+    src: "{{ foundryvtt_zip_path }}"
+    dest: "{{ foundryvtt_install_dir }}/foundryvtt.zip"
+    owner: foundry
+    group: foundry
+    mode: '0644'
+  when: foundryvtt_zip_path is defined and not foundryvtt_installed.stat.exists
+
+- name: Extract FoundryVTT
+  unarchive:
+    src: "{{ foundryvtt_install_dir }}/foundryvtt.zip"
+    dest: "{{ foundryvtt_install_dir }}"
+    owner: foundry
+    group: foundry
+    remote_src: yes
+  when: foundryvtt_zip_present | default(false) and not foundryvtt_installed.stat.exists
+
+- name: Remove zip file after extraction
+  file:
+    path: "{{ foundryvtt_install_dir }}/foundryvtt.zip"
+    state: absent
+  when: foundryvtt_zip_present | default(false)
+
+- name: Create FoundryVTT systemd service
+  template:
+    src: foundryvtt.service.j2
+    dest: /etc/systemd/system/foundryvtt.service
+    mode: '0644'
+  become: yes
+  notify:
+    - reload systemd
+    - restart foundryvtt
+
+- name: Create FoundryVTT configuration script
+  template:
+    src: start-foundryvtt.sh.j2
+    dest: "{{ foundryvtt_install_dir }}/start-foundryvtt.sh"
+    owner: foundry
+    group: foundry
+    mode: '0755'
+
+- name: Configure UFW firewall
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "22"      # SSH
+    - "30000"   # FoundryVTT
+    - "80"      # HTTP
+    - "443"     # HTTPS
+  become: yes
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+  become: yes
+
+- name: Start and enable FoundryVTT service
+  systemd:
+    name: foundryvtt
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes
+  when: foundryvtt_installed.stat.exists or foundryvtt_zip_present | default(false)

@@ -1,0 +1,41 @@
+---
+- name: Deploy FoundryVTT Server
+  hosts: foundryvtt
+  become: no
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Wait for SSH to be available
+      wait_for_connection:
+        timeout: 300
+        delay: 10
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      become: yes
+      
+  roles:
+    - foundryvtt
+
+  post_tasks:
+    - name: Display FoundryVTT information
+      debug:
+        msg: |
+          FoundryVTT installation complete!
+          
+          Access FoundryVTT at: http://{{ ansible_host }}:{{ foundryvtt_port }}
+          
+          Next steps:
+          1. Download FoundryVTT from your account at https://foundryvtt.com/
+          2. Copy the Node.js zip file to the server
+          3. Run: ansible-playbook playbooks/foundryvtt.yml -e foundryvtt_zip_present=true
+          
+          Or copy local file:
+          4. Place zip in ../files/foundryvtt.zip
+          5. Run: ansible-playbook playbooks/foundryvtt.yml -e foundryvtt_zip_path=../files/foundryvtt.zip
+          
+          Service management:
+          - Status: sudo systemctl status foundryvtt
+          - Logs: sudo journalctl -u foundryvtt -f
+          - Restart: sudo systemctl restart foundryvtt

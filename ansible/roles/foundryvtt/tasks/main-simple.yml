@@ -1,0 +1,61 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install required packages including Node.js
+  apt:
+    name:
+      - libssl-dev
+      - curl
+      - unzip
+      - nginx
+      - ufw
+      - nodejs
+      - npm
+    state: present
+  become: yes
+
+- name: Check Node.js version
+  command: node --version
+  register: node_version
+  changed_when: false
+
+- name: Display Node.js version
+  debug:
+    msg: "Node.js version installed: {{ node_version.stdout }}"
+
+- name: Install newer Node.js if version is too old
+  block:
+    - name: Download Node.js 22 installer script
+      get_url:
+        url: https://deb.nodesource.com/setup_22.x
+        dest: /tmp/nodejs_setup.sh
+        mode: '0755'
+      become: yes
+
+    - name: Run Node.js installer script
+      shell: /tmp/nodejs_setup.sh
+      become: yes
+
+    - name: Install Node.js 22
+      apt:
+        name: nodejs
+        state: latest
+        update_cache: yes
+      become: yes
+
+    - name: Verify new Node.js version
+      command: node --version
+      register: new_node_version
+      changed_when: false
+
+    - name: Display new Node.js version
+      debug:
+        msg: "Updated Node.js version: {{ new_node_version.stdout }}"
+
+  when: node_version.stdout is version('v20.0', '<')
+
+# ... rest of the tasks remain the same ...

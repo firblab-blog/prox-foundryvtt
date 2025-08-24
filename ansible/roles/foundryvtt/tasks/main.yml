@@ -1,0 +1,236 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install base required packages (without Node.js/npm initially)
+  apt:
+    name:
+      - libssl-dev
+      - curl
+      - unzip
+      - nginx
+      - ufw
+    state: present
+  become: yes
+
+- name: Try to install nodejs and npm from Ubuntu repos
+  apt:
+    name:
+      - nodejs
+      - npm
+    state: present
+  become: yes
+  ignore_errors: yes
+  register: ubuntu_nodejs_install
+
+- name: Check Node.js version
+  command: node --version
+  register: node_version
+  changed_when: false
+  failed_when: false
+
+- name: Display Node.js version if available
+  debug:
+    msg: "Node.js version installed: {{ node_version.stdout | default('Not installed') }}"
+
+- name: Install Node.js 22 from NodeSource if needed
+  block:
+    - name: Download Node.js 22 installer script
+      get_url:
+        url: https://deb.nodesource.com/setup_22.x
+        dest: /tmp/nodejs_setup.sh
+        mode: '0755'
+      become: yes
+
+    - name: Run Node.js installer script
+      shell: /tmp/nodejs_setup.sh
+      become: yes
+
+    - name: Remove conflicting packages
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: absent
+        purge: yes
+      become: yes
+      ignore_errors: yes
+
+    - name: Clean package cache
+      apt:
+        autoclean: yes
+        autoremove: yes
+      become: yes
+
+    - name: Install Node.js 22
+      apt:
+        name: nodejs
+        state: present
+        update_cache: yes
+      become: yes
+
+    - name: Verify new Node.js version
+      command: node --version
+      register: new_node_version
+      changed_when: false
+
+    - name: Display new Node.js version
+      debug:
+        msg: "Updated Node.js version: {{ new_node_version.stdout }}"
+
+  when: node_version.rc != 0 or (node_version.stdout is defined and node_version.stdout is version('v20.0', '<'))
+
+- name: Get final Node.js version
+  command: node --version
+  register: final_node_version
+  changed_when: false
+
+- name: Display final Node.js version
+  debug:
+    msg: "Final Node.js version: {{ final_node_version.stdout }}"
+
+- name: Verify Node.js version meets requirements
+  fail:
+    msg: "Node.js version {{ final_node_version.stdout }} is too old. Minimum required: v20.0"
+  when: 
+    - final_node_version.stdout is version('v20.0', '<')
+
+- name: Check if npm is available
+  command: npm --version
+  register: npm_version
+  changed_when: false
+  failed_when: false
+
+- name: Install npm if not available
+  shell: |
+    # NodeSource Node.js 22 comes with npm built-in
+    # If npm is not available, reinstall nodejs
+    if ! command -v npm &> /dev/null; then
+      apt-get install -y --reinstall nodejs
+    fi
+  become: yes
+  when: npm_version.rc != 0
+
+- name: Verify npm is working
+  command: npm --version
+  register: final_npm_version
+  changed_when: false
+
+- name: Display npm version
+  debug:
+    msg: "npm version: {{ final_npm_version.stdout }}"
+
+- name: Create FoundryVTT directories with proper permissions
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ foundryvtt_install_dir }}", owner: "foundry", group: "foundry", mode: "0755" }
+    - { path: "{{ foundryvtt_data_dir }}", owner: "foundry", group: "foundry", mode: "0755" }
+    - { path: "{{ foundryvtt_config_dir }}", owner: "foundry", group: "foundry", mode: "0755" }
+  become: yes
+
+- name: Check if FoundryVTT is already installed
+  stat:
+    path: "{{ foundryvtt_install_dir }}/resources/app/main.js"
+  register: foundryvtt_installed
+
+- name: Copy FoundryVTT files from local directory
+  synchronize:
+    src: "../../files/FoundryVTT-Linux-13.347/"
+    dest: "{{ foundryvtt_install_dir }}/"
+    owner: no
+    group: no
+    rsync_opts:
+      - "--exclude=*.zip"
+    private_key: "../../terraform/files/foundryvtt_ssh_key.pem"
+  when: 
+    - not foundryvtt_installed.stat.exists
+    - not foundryvtt_files_copied | default(false)
+
+- name: Set ownership of FoundryVTT files
+  file:
+    path: "{{ foundryvtt_install_dir }}"
+    owner: foundry
+    group: foundry
+    recurse: yes
+  become: yes
+  when: not foundryvtt_installed.stat.exists
+
+- name: Make JavaScript files executable
+  shell: find {{ foundryvtt_install_dir }} -name "*.js" -exec chmod +x {} \;
+  when: not foundryvtt_installed.stat.exists
+
+- name: Verify FoundryVTT main.js exists
+  stat:
+    path: "{{ foundryvtt_install_dir }}/resources/app/main.js"
+  register: main_js_exists
+
+- name: Fail if FoundryVTT main.js is missing
+  fail:
+    msg: "FoundryVTT main.js not found in {{ foundryvtt_install_dir }}/resources/app/. Check if FoundryVTT files were copied correctly."
+  when: not main_js_exists.stat.exists
+
+- name: Create FoundryVTT systemd service
+  template:
+    src: foundryvtt.service.j2
+    dest: /etc/systemd/system/foundryvtt.service
+    mode: '0644'
+  become: yes
+  notify:
+    - reload systemd
+    - restart foundryvtt
+
+- name: Create FoundryVTT configuration script
+  template:
+    src: start-foundryvtt.sh.j2
+    dest: "{{ foundryvtt_install_dir }}/start-foundryvtt.sh"
+    owner: foundry
+    group: foundry
+    mode: '0755'
+
+- name: Configure UFW firewall
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "22"      # SSH
+    - "30000"   # FoundryVTT
+    - "80"      # HTTP
+    - "443"     # HTTPS
+  become: yes
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+  become: yes
+
+- name: Start and enable FoundryVTT service
+  systemd:
+    name: foundryvtt
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes
+  when: main_js_exists.stat.exists or foundryvtt_zip_present | default(false)
+
+- name: Display setup summary
+  debug:
+    msg: |
+      FoundryVTT setup complete!
+      
+      Node.js version: {{ final_node_version.stdout }}
+      npm version: {{ final_npm_version.stdout }}
+      Access URL: http://{{ ansible_host }}:30000
+      
+      Next steps if FoundryVTT not installed yet:
+      1. Download FoundryVTT from your account
+      2. Copy to server: scp -i ../terraform/files/foundryvtt_ssh_key.pem foundryvtt.zip foundry@{{ ansible_host }}:/opt/foundryvtt/
+      3. Re-run: ansible-playbook playbooks/foundryvtt.yml -e foundryvtt_zip_present=true

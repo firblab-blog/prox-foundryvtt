@@ -1,0 +1,29 @@
+[Unit]
+Description=FoundryVTT Game Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=foundry
+Group=foundry
+WorkingDirectory={{ foundryvtt_install_dir }}
+ExecStart={{ foundryvtt_install_dir }}/start-foundryvtt.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=foundryvtt
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ foundryvtt_data_dir }} {{ foundryvtt_install_dir }}
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
