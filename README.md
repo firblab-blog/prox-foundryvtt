@@ -311,5 +311,5 @@ This project is provided as-is for educational and personal use. Please ensure y
 For issues and questions:
 - Check the troubleshooting section above
 - Review [FoundryVTT documentation](https://foundryvtt.com/kb/)
-- Check [Terraform Proxmox Provider documentation](https://registry.terraform.io/providers/Telmate/proxmox/latest/docs)
+- Check [Terraform Proxmox Provider documentation](https://registry.terraform.io/providers/bpg/proxmox/latest/docs)
 - Open an issue on GitHub
