@@ -154,7 +154,7 @@ Default VM configuration (customizable in `firblab.tfvars`):
 - **System Disk**: 40GB
 - **Data Disk**: 50GB (for FoundryVTT worlds/assets)
 - **Network**: Static IP or DHCP
-- **OS**: Ubuntu 22.04 LTS
+- **OS**: Ubuntu 24.04 LTS
 
 ### FoundryVTT Configuration
 
